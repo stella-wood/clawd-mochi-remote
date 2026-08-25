@@ -1,0 +1,30 @@
+# ── 凭据：绝不进版本库 ──────────────────────────────
+secrets.h
+credentials.h
+.env
+.env.*
+.dev.vars
+
+# ── Arduino / ESP32 编译产物 ────────────────────────
+build/
+*.bin
+*.elf
+*.hex
+*.map
+*.d
+*.o
+
+# ── IDE ─────────────────────────────────────────────
+.theia/
+.vscode/
+.idea/
+
+# ── Cloudflare Worker ───────────────────────────────
+node_modules/
+.wrangler/
+dist/
+
+# ── 系统 ────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*~
