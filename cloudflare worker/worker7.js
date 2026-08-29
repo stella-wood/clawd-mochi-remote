@@ -96,14 +96,25 @@ export default {
           .bind(ROW_KEY, raw, Date.now())
           .run();
       } catch (e) {
-        // 写失败也返回 200，避免 EMQX 反复重试；错误会在下次诊断里显现
-        return new Response('db error: ' + String(e).slice(0, 200), { status: 200 });
+        // ⚠️ 写失败必须返回非 2xx。
+        //    以前这里返回 200，理由写的是"避免 EMQX 反复重试"——代价是失败被咽掉：
+        //    EMQX 以为写成功了，D1 里其实什么都没有，而 MCP 那头只会说
+        //    "没等到设备确认"，分不出是数据库挂了还是设备真没回。
+        //    坏了不吭声，比坏了更糟。
+        //    EMQX 会因此重试，这正是我们要的：一台表情屏的 QPS 极低，打不爆任何东西。
+        return new Response('db error: ' + String(e).slice(0, 200), { status: 503 });
       }
       return new Response('ok', { status: 200 });
     }
 
     // ── ② 调试用：直接看 D1 里存的是什么 ────────────────
+    //    ⚠️ 要带 X-Report-Token（跟 /report 同一个凭据）。
+    //       以前这里是全公开的：知道地址就能读到设备状态。
     if (request.method === 'GET' && url.pathname === '/peek') {
+      const token = request.headers.get('X-Report-Token') || '';
+      if (!env.REPORT_TOKEN || token !== env.REPORT_TOKEN) {
+        return new Response('forbidden', { status: 403 });
+      }
       try {
         const st = await readState(env);
         return json({ state: st });
