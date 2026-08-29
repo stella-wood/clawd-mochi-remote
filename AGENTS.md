@@ -46,6 +46,11 @@ ESP32 → clawd/mochi/state → EMQX Rule → Worker /report → D1 → Claude
 
 ## 4. 修改规则
 
+**⚠️ 保持单文件结构。** 固件代码全部留在 `clawd_mochi/clawd_mochi.ino` 一个文件里，
+不要为了"整理"拆成多个 `.cpp` / `.h`。这是[原项目](https://github.com/yousifamanuel/clawd-mochi)
+作者在 Contributing 里明确请求的，理由是让新手能直接打开烧录。
+凭据是唯一的例外——它们必须留在 `secrets.h`，那是安全要求。
+
 ### 只改固件效果
 
 1. 备份正式 `.ino`；
