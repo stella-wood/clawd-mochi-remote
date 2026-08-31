@@ -25,6 +25,7 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <HTTPClient.h>
+#include <Preferences.h>   // 存网页上填的 WiFi，掉电不丢
 
 #include "secrets.h"   // 凭据都在这儿，不进 git
 // ── Pins ──────────────────────────────────────────────────────
@@ -41,6 +42,15 @@ const char* AP_PASS = SECRET_AP_PASS;
 
 const char* STA_SSID = SECRET_STA_SSID;
 const char* STA_PASS = SECRET_STA_PASS;
+
+// ── 网页配网 ──────────────────────────────────────────────────
+//  secrets.h 里那对是「出厂默认」。网页上填的存在 NVS 里，优先用。
+//  换地方（宿舍、别人家、手机热点）不用再连电脑重烧。
+//  AP 一直开着（WIFI_AP_STA），所以就算填错了连不上，
+//  也永远能连回 Clawd 自己的热点进 /wifi 改回来 —— 锁不死。
+Preferences prefs;
+String staSsidInUse;   // 这次开机实际用的，只为了显示
+bool   staFromNvs = false;
 
 // EMQX 信息
 const char* MQTT_HOST = SECRET_MQTT_HOST;
@@ -1379,6 +1389,142 @@ void routeState() {
   server.send(200, "application/json", j);
 }
 
+// ═════════════════════════════════════════════════════════════
+//  WIFI 配网页 — 换地方不用重烧
+//   /wifi         填新的 WiFi
+//   /wifi/save    存进 NVS 并立刻重连（POST，密码不进地址栏）
+//   /wifi/forget  清掉，回到 secrets.h 的默认（POST）
+//
+//  AP 始终开着，所以填错了也锁不死：连回 Clawd 自己的热点就能改。
+// ═════════════════════════════════════════════════════════════
+static String htmlEscape(const String& in) {
+  String o;
+  for (unsigned int i = 0; i < in.length(); i++) {
+    char c = in[i];
+    if      (c == '&')  o += "&amp;";
+    else if (c == '<')  o += "&lt;";
+    else if (c == '>')  o += "&gt;";
+    else if (c == '"')  o += "&quot;";
+    else if (c == '\'') o += "&#39;";
+    else                o += c;
+  }
+  return o;
+}
+
+static String wifiPageShell(const String& inner) {
+  String h = F("<!doctype html><html><head><meta charset=utf-8>"
+               "<meta name=viewport content='width=device-width,initial-scale=1'>"
+               "<title>Clawd WiFi</title><style>"
+               "body{background:#15130f;color:#f2ede4;font-family:system-ui,-apple-system,sans-serif;"
+               "margin:0;padding:24px;line-height:1.6}"
+               ".w{max-width:420px;margin:0 auto}"
+               "h1{font-size:20px;margin:0 0 4px;color:#ff8a3d}"
+               ".sub{color:#8d857a;font-size:13px;margin-bottom:22px}"
+               ".card{background:#1f1c17;border:1px solid #2e2a24;border-radius:10px;padding:16px;margin-bottom:16px}"
+               "label{display:block;font-size:13px;color:#8d857a;margin:12px 0 4px}"
+               "input{width:100%;box-sizing:border-box;background:#15130f;border:1px solid #3a352d;"
+               "color:#f2ede4;border-radius:6px;padding:10px;font-size:16px}"
+               "button{width:100%;margin-top:18px;background:#ff8a3d;color:#15130f;border:0;"
+               "border-radius:6px;padding:12px;font-size:16px;font-weight:600}"
+               "button.ghost{background:transparent;color:#8d857a;border:1px solid #3a352d;margin-top:10px}"
+               ".k{color:#8d857a}.v{color:#f2ede4}"
+               ".ok{color:#7ac47a}.bad{color:#e07a5f}"
+               "</style></head><body><div class=w>");
+  h += inner;
+  h += F("</div></body></html>");
+  return h;
+}
+
+void routeWifi() {
+  bool up = (WiFi.status() == WL_CONNECTED);
+
+  String inner = F("<h1>Clawd 的网络</h1><div class=sub>换了地方就在这儿填，不用连电脑</div>");
+
+  inner += F("<div class=card>");
+  inner += F("<div><span class=k>当前状态：</span>");
+  if (up) inner += F("<span class=ok>已连上</span>");
+  else    inner += F("<span class=bad>没连上</span>");
+  inner += F("</div>");
+  inner += F("<div><span class=k>正在用：</span><span class=v>");
+  inner += htmlEscape(staSsidInUse);
+  inner += F("</span></div>");
+  inner += F("<div><span class=k>来自：</span><span class=v>");
+  if (staFromNvs) inner += F("网页上填的");
+  else            inner += F("secrets.h 默认");
+  inner += F("</span></div>");
+  if (up) {
+    inner += F("<div><span class=k>IP：</span><span class=v>");
+    inner += WiFi.localIP().toString();
+    inner += F("</span></div>");
+  }
+  inner += F("</div>");
+
+  inner += F("<form class=card method=POST action='/wifi/save'>"
+             "<label>WiFi 名字</label><input name=s autocomplete=off>"
+             "<label>密码</label><input name=p type=password autocomplete=off>"
+             "<button type=submit>存下来，现在就连</button></form>");
+
+  inner += F("<form method=POST action='/wifi/forget'>"
+             "<button class=ghost type=submit>忘掉，回到默认的那个</button></form>");
+
+  inner += F("<div class=sub style='margin-top:18px'>"
+             "只认 2.4G。手机热点要关掉 5G（iPhone 打开「最大兼容性」）。</div>");
+
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "text/html", wifiPageShell(inner));
+}
+
+static void wifiResultPage(const String& msg) {
+  String inner = F("<h1>好了</h1><div class=sub>");
+  inner += msg;
+  inner += F("</div><div class=card>正在连，等几秒。这一页会自己跳回去。</div>"
+             "<meta http-equiv=refresh content='6;url=/wifi'>");
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "text/html", wifiPageShell(inner));
+}
+
+void routeWifiSave() {
+  String ssid = server.arg("s");
+  String pass = server.arg("p");
+  ssid.trim();
+
+  if (ssid.isEmpty()) {
+    String inner = F("<h1>没填名字</h1><div class=sub>WiFi 名字不能空着。</div>"
+                     "<meta http-equiv=refresh content='2;url=/wifi'>");
+    server.send(400, "text/html", wifiPageShell(inner));
+    return;
+  }
+
+  prefs.begin("wifi", false);          // false = 可写
+  prefs.putString("ssid", ssid);
+  prefs.putString("pass", pass);
+  prefs.end();
+
+  staSsidInUse = ssid;
+  staFromNvs   = true;
+
+  WiFi.disconnect();
+  WiFi.begin(ssid.c_str(), pass.c_str());
+
+  Serial.println("WiFi 换成网页上填的了");   // ⚠️ 只说换了，不打印名字和密码
+  wifiResultPage(F("存下来了，掉电也不会丢。"));
+}
+
+void routeWifiForget() {
+  prefs.begin("wifi", false);
+  prefs.clear();
+  prefs.end();
+
+  staSsidInUse = String(STA_SSID);
+  staFromNvs   = false;
+
+  WiFi.disconnect();
+  WiFi.begin(STA_SSID, STA_PASS);
+
+  Serial.println("WiFi 清回 secrets.h 默认");
+  wifiResultPage(F("清掉了，回到 secrets.h 里那个。"));
+}
+
 void routeNotFound() { server.send(404, "text/plain", "not found"); }
 
 
@@ -1533,8 +1679,23 @@ void setup() {
 WiFi.mode(WIFI_AP_STA);
 WiFi.softAP(AP_SSID, AP_PASS);
 
-Serial.print("连接家用 WiFi");
-WiFi.begin(STA_SSID, STA_PASS);
+// 先看 NVS 里有没有网页上填过的；有就用它，没有才回落到 secrets.h
+prefs.begin("wifi", true);                      // true = 只读
+String nvsSsid = prefs.getString("ssid", "");
+String nvsPass = prefs.getString("pass", "");
+prefs.end();
+
+if (nvsSsid.length() > 0) {
+  staSsidInUse = nvsSsid;
+  staFromNvs   = true;
+  Serial.print("连接 WiFi（网页上填的）");
+  WiFi.begin(nvsSsid.c_str(), nvsPass.c_str());
+} else {
+  staSsidInUse = String(STA_SSID);
+  staFromNvs   = false;
+  Serial.print("连接 WiFi（secrets.h 默认）");
+  WiFi.begin(STA_SSID, STA_PASS);
+}
 
 unsigned long wifiStart = millis();
 while (WiFi.status() != WL_CONNECTED &&
@@ -1582,6 +1743,9 @@ mqtt.setCallback(mqttCallback);
   server.on("/draw/stroke", HTTP_GET, routeDrawStroke);
   server.on("/backlight",   HTTP_GET, routeBacklight);
   server.on("/state",       HTTP_GET, routeState);
+  server.on("/wifi",        HTTP_GET,  routeWifi);
+  server.on("/wifi/save",   HTTP_POST, routeWifiSave);
+  server.on("/wifi/forget", HTTP_POST, routeWifiForget);
   server.onNotFound(routeNotFound);
   server.begin();
 
