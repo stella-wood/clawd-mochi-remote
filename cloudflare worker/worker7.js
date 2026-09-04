@@ -200,6 +200,12 @@ export default {
             probe: { type: 'boolean', description: '是否主动探测设备是否在线。默认 true。' }
           } }
         }, {
+          name: 'clawd_say',
+          description: '在 Clawd Mochi 的屏幕上显示一句话。目前只支持 ASCII 字符（英文、数字、标点），中文暂不支持，会被自动丢弃。屏幕一行 15 个字符，超出自动折行，超过 8 行自动上滚。',
+          inputSchema: { type: 'object', properties: {
+            text: { type: 'string', description: '要显示的文字，ASCII only，建议不超过 100 个字符' }
+          }, required: ['text'] }
+        }, {
           name: 'clawd_command',
           description: '控制桌面小螃蟹Clawd Mochi。指令:blink(眨眼)、squish(眯眼><)、wink(单眼眨眼)、sleep(睡觉zzz)、angry(生气)、sad(难过)、cute(呆萌圆眼)、surprised(惊讶张嘴)、dead(翻白眼X)、love(爱心眼)、happy(开心^^)、normal(普通眼睛)、canvas(画板)。返回结果会区分「屏幕已执行」和「已发出但设备未确认」。',
           inputSchema: { type: 'object', properties: {
@@ -243,6 +249,39 @@ export default {
             : '\n数据库里没有任何记录 —— /report 从来没被调到过，或者写入一直在失败。';
           text += `\n[诊断] ${diag}`;
           return textResult(body.id, text);
+        }
+
+        if (toolName === 'clawd_say') {
+          const text = String(body.params?.arguments?.text || '');
+
+          // ⚠️ 过滤必须在这里做，不能指望固件丢弃。
+          //    termAddChar 只收 32..126，UTF-8 的中文是多字节，逐字节喂进去
+          //    只是被逐个丢掉，不会崩 —— 但那是一次沉默的失败：
+          //    调用方看到"发出去了"，屏幕上什么都没有，没人知道为什么。
+          //    在入口挡住，并且明确说丢了多少个，才是一条能读懂的反馈。
+          const filtered = text.replace(/[^\x20-\x7E\n]/g, '');
+          const dropped  = [...text].length - [...filtered].length;
+
+          if (!filtered) {
+            return textResult(body.id, '⚠️ 过滤之后没有内容了。目前只支持 ASCII，中文还没做。');
+          }
+          if (filtered.length > 200) {
+            return textResult(body.id, '⚠️ 太长了（超过 200 字符）。屏幕一共只能显示 15×8 = 120 个字符。');
+          }
+
+          const nonce = Math.random().toString(36).slice(2, 10);
+          const pub = await publishMQTT(env, CMD_TOPIC, `text#${nonce}#${filtered}`);
+          if (!pub.ok) {
+            return textResult(body.id, `❌ 发布失败（EMQX HTTP ${pub.status}）`);
+          }
+
+          const { state, diag } = await waitForDevice(env, nonce);
+          if (state && state.ok === 1) {
+            let t = `🦀 屏幕上已经显示：「${filtered}」`;
+            if (dropped > 0) t += `\n（有 ${dropped} 个非 ASCII 字符被丢掉了）`;
+            return textResult(body.id, t);
+          }
+          return textResult(body.id, `⚠️ 已发出，没等到设备确认。\n[诊断] ${diag}`);
         }
 
         const command = body.params?.arguments?.command || '';
