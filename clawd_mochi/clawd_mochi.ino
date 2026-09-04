@@ -735,73 +735,88 @@ void animLogoReveal() {
 //  UNIFIED COMMAND
 // ═════════════════════════════════════════════════════════════
 
+// ── 命令表 ────────────────────────────────────────────────────
+//  加一个新表情 = 在 CMD_TABLE 里加一行，不用再改三个地方。
+//  name       命令名（MQTT 和本地网页共用）
+//  view       执行后 currentView 变成什么
+//  action     具体干活的函数（无参）
+//  key        本地网页用的单字符快捷键，0 表示没有
+//  termAfter  action 跑完之后 termMode 设成什么
+//  passive    true = 探针命令：不改 view、不改 termMode、不画任何东西
+struct CmdEntry {
+  const char* name;
+  uint8_t     view;
+  void      (*action)();
+  char        key;
+  bool        termAfter;
+  bool        passive;
+};
+
+// normal 用的是带默认参数的 drawNormalEyes()，
+// 带默认参数的函数取不到 void(*)() 函数指针，这是 C++ 的规则，只能包一层。
+static void actNormal() { drawNormalEyes(); }
+
+// canvas 只是把屏幕刷成画板底色
+static void actCanvas() { tft.fillScreen(drawBgColor); }
+
+// code 要画完标题页再清空并重绘终端。
+// ⚠️ drawCodeView() 的第一行就是 termMode = false，
+//    所以 termMode 的最终值必须由 executeCommand 在 action 之后补上。
+static void actCode() {
+  drawCodeView();
+  termClear();
+  termFullRedraw();
+}
+
+// ping 什么都不做 —— 它存在的意义就是"被执行到"这件事本身。
+// 第二期的 clawd_status 探针要靠它确认设备此刻真的活着。
+static void actNoop() {}
+
+static const CmdEntry CMD_TABLE[] = {
+  // name         view                  action             key  termAfter passive
+  { "blink",      VIEW_EYES_NORMAL,     animNormalEyes,    'w', false,    false },
+  { "squish",     VIEW_EYES_SQUISH,     animSquishEyes,    's', false,    false },
+  { "wink",       VIEW_EYES_WINK,       animWink,          'e', false,    false },
+  { "sleep",      VIEW_EYES_SLEEP,      animSleep,         'f', false,    false },
+  { "angry",      VIEW_EYES_ANGRY,      animAngry,         'g', false,    false },
+  { "sad",        VIEW_EYES_SAD,        animSad,           'h', false,    false },
+  { "cute",       VIEW_EYES_CUTE,       animCute,          'i', false,    false },
+  { "surprised",  VIEW_EYES_SURPRISED,  animSurprised,     'm', false,    false },
+  { "dead",       VIEW_EYES_DEAD,       animDead,          'j', false,    false },
+  { "love",       VIEW_EYES_LOVE,       animLove,          'l', false,    false },
+  { "happy",      VIEW_EYES_HAPPY,      animHappy,         'n', false,    false },
+  { "normal",     VIEW_EYES_NORMAL,     actNormal,         0,   false,    false },
+  { "canvas",     VIEW_DRAW,            actCanvas,         0,   false,    false },
+  { "code",       VIEW_CODE,            actCode,           'd', true,     false },
+  { "logo",       VIEW_EYES_NORMAL,     animLogoReveal,    'a', false,    false },
+  { "ping",       0,                    actNoop,           0,   false,    true  },
+};
+static const uint8_t CMD_COUNT = sizeof(CMD_TABLE) / sizeof(CMD_TABLE[0]);
+
 bool executeCommand(const String& cmd) {
-  if (cmd == "blink") {
-    currentView = VIEW_EYES_NORMAL;
+  for (uint8_t i = 0; i < CMD_COUNT; i++) {
+    if (cmd != CMD_TABLE[i].name) continue;
+
+    const CmdEntry& e = CMD_TABLE[i];
+
+    // 探针命令：不动任何显示状态，只是"我收到了"
+    if (e.passive) { e.action(); return true; }
+
+    currentView = e.view;
+
+    // ⚠️ termMode 要在 action 前后各写一次，两次都不能省：
+    //  前一次 —— 旧代码除 code 外每条分支都是先把 termMode 清成 false 再放动画。
+    //            animLogoReveal() 内部会调 server.handleClient()，动画期间进来的
+    //            HTTP 请求会读 termMode（routeChar/routeCmd 都读），所以清除时机
+    //            必须保持在动画之前，否则 logo 这条命令的行为会跟重构前不一样。
+    //  后一次 —— code 需要。drawCodeView() 内部会把 termMode 清成 false，
+    //            最终值只能在 action 跑完之后才定得住。
     termMode = false;
-    animNormalEyes();
-  } else if (cmd == "squish") {
-    currentView = VIEW_EYES_SQUISH;
-    termMode = false;
-    animSquishEyes();
-  } else if (cmd == "wink") {
-    currentView = VIEW_EYES_WINK;
-    termMode = false;
-    animWink();
-  } else if (cmd == "sleep") {
-    currentView = VIEW_EYES_SLEEP;
-    termMode = false;
-    animSleep();
-  } else if (cmd == "angry") {
-    currentView = VIEW_EYES_ANGRY;
-    termMode = false;
-    animAngry();
-  } else if (cmd == "sad") {
-    currentView = VIEW_EYES_SAD;
-    termMode = false;
-    animSad();
-  } else if (cmd == "cute") {
-    currentView = VIEW_EYES_CUTE;
-    termMode = false;
-    animCute();
-  } else if (cmd == "surprised") {
-    currentView = VIEW_EYES_SURPRISED;
-    termMode = false;
-    animSurprised();
-  } else if (cmd == "dead") {
-    currentView = VIEW_EYES_DEAD;
-    termMode = false;
-    animDead();
-  } else if (cmd == "love") {
-    currentView = VIEW_EYES_LOVE;
-    termMode = false;
-    animLove();
-  } else if (cmd == "happy") {
-    currentView = VIEW_EYES_HAPPY;
-    termMode = false;
-    animHappy();
-  } else if (cmd == "normal") {
-    currentView = VIEW_EYES_NORMAL;
-    termMode = false;
-    drawNormalEyes();
-  } else if (cmd == "canvas") {
-    currentView = VIEW_DRAW;
-    termMode = false;
-    tft.fillScreen(drawBgColor);
-  } else if (cmd == "code") {
-    currentView = VIEW_CODE;
-    drawCodeView();
-    termMode = true;
-    termClear();
-    termFullRedraw();
-  } else if (cmd == "logo") {
-    currentView = VIEW_EYES_NORMAL;
-    termMode = false;
-    animLogoReveal();
-  } else {
-    return false;
+    e.action();
+    termMode = e.termAfter;
+    return true;
   }
-  return true;
+  return false;
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -1258,21 +1273,13 @@ void routeCmd() {
 
   server.send(200, "application/json", "{\"ok\":1}");
 
+  // 快捷键映射来自 CMD_TABLE，不再单独维护一份
   String cmd;
-  switch (c) {
-    case 'w': cmd = "blink";  break;
-    case 's': cmd = "squish"; break;
-    case 'd': cmd = "code";   break;
-    case 'a': cmd = "logo";   break;
-    case 'e': cmd = "wink";      break;
-    case 'f': cmd = "sleep";     break;
-    case 'g': cmd = "angry";     break;
-    case 'h': cmd = "sad";       break;
-    case 'i': cmd = "cute";      break;
-    case 'j': cmd = "dead";      break;
-    case 'l': cmd = "love";      break;
-    case 'm': cmd = "surprised"; break;
-    case 'n': cmd = "happy";     break;
+  for (uint8_t i = 0; i < CMD_COUNT; i++) {
+    if (CMD_TABLE[i].key != 0 && CMD_TABLE[i].key == c) {
+      cmd = CMD_TABLE[i].name;
+      break;
+    }
   }
   if (cmd.length() > 0) {
     bool ok = executeCommand(cmd);
