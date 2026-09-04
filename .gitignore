@@ -4,6 +4,7 @@ credentials.h
 .env
 .env.*
 .dev.vars
+MQTT.txt
 
 # ── Arduino / ESP32 编译产物 ────────────────────────
 build/
@@ -29,8 +30,7 @@ dist/
 Thumbs.db
 *~
 
-# ── 本地施工用，不进版本库 ──────────────────────────
-#  备份不推：回退是 git 自己的活，再存一份是冗余。
-#  方案文档不推：那是施工稿，不是项目的一部分。
+# ── others ──────────────────────────
+clawd_mochi.3mf
 backup/
 施工方案-*.md

@@ -1,6 +1,6 @@
 # Clawd Mochi Remote
 
-一只放在桌上的 ESP32 表情屏小螃蟹。手机连它的热点就能点表情，也能从地球另一端通过 MCP 让它眨眼。
+一只放在桌上的 ESP32 表情屏小螃蟹🦀。手机连它的热点就能点表情，也能从地球另一端通过 MCP 让它眨眼。
 
 > **来源与许可**
 >
@@ -10,8 +10,8 @@
 > 相对原项目「设备热点 + 本地网页」的控制方式，本版本增加了由 Cloudflare Worker、
 > EMQX MQTT 和 MCP 工具组成的远程控制链路。
 >
-> 原项目的 3D 模型与媒体资源采用 CC BY-NC-SA 4.0（署名 / 非商业 / 相同方式共享），
-> 本仓库不包含这些资源；如需使用请回原项目获取并遵守该许可。
+> 原项目的 3D 模型与媒体资源采用 CC BY-NC-SA 4.0（署名 / 非商业 / 相同方式共享）。 
+>资源地址：https://makerworld.com/en/models/2559505-clawd-mochi-physical-claude-code-mascot#profileId-2820000 
 >
 > Clawd 是 Anthropic 的 Claude Code 吉祥物。本项目是独立的粉丝作品，
 > 不隶属于 Anthropic，也未获其赞助或认可。
@@ -44,9 +44,8 @@
 ## 这是什么
 
 **成本 ~$6–8 · 组装约 1 小时 · 难度：新手friendly**
-<sub>（以上数据来自[原项目](https://github.com/yousifamanuel/clawd-mochi)，非本仓库实测）</sub>
 
-设备是一块 ESP32-C3 驱动的 240×240 ST7789 屏幕，显示一只会做表情的螃蟹。它有两条控制路径：
+设备是一块 ESP32-C3 驱动的 240×240 ST7789 屏幕，显示一只会做表情的小螃蟹。它有两条控制路径：
 
 ```text
 本地：手机 → ESP32 热点 → HTTP → executeCommand() → 屏幕
@@ -81,7 +80,7 @@
 | 3D 打印外壳 | PLA 或 PETG，约 30g | ~$0.50 |
 
 **合计 ~$7–8。**
-<sub>价格来自[原项目](https://github.com/yousifamanuel/clawd-mochi)，非本仓库实测；外壳模型采用 CC BY-NC-SA 4.0，需回原项目获取。</sub>
+
 
 **接线**
 
@@ -138,10 +137,9 @@ https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32
 - MQTT 主机、用户名和密码（TLS 端口 8883 写在固件里）
 - 上报地址与 token（仅停用的直连上报路径需要）
 
-固件顶部 `#include "secrets.h"` 读取它们。该文件已被 `.gitignore` 排除，不会进版本库。
+固件顶部 `#include "secrets.h"` 读取它们。
 
-> ⚠️ **不要把真实值复制到 README、日志、截图或补丁中。**
-> 运行不依赖 `MQTT.txt`；若删除该文件，以 `secrets.h` 或你自己的私密存储为准。
+
 
 烧录步骤：
 
@@ -154,8 +152,7 @@ https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32
 6. 用串口日志逐个确认：启动、家庭 Wi-Fi、MQTT 连接、topic 订阅
    ——**这是四个不同的阶段，不要合并判断。**
 
-项目记录的最近一次占用为程序 1,179,449 bytes（38%）、全局变量 39,400 bytes（12%）。
-这是历史验收记录，本次文档整理没有重新编译。
+
 
 ### 4. 配置远程链路（可选）
 
@@ -201,9 +198,6 @@ ${payload}
 HTTP Action 指向 Worker `/report`，Header 名为 `X-Report-Token`。
 Cloudflare 的 `REPORT_TOKEN` 与 EMQX Action Header 的值必须一致。
 
-> ⚠️ 以上是重建参数，仓库无法证明线上当前仍是这样配置。
-> **部署 Worker 前，先从 Cloudflare 取回线上代码与磁盘 `worker7.js` 比较**
-> ——现有文件不能证明线上是否有额外修正，或是否启用了私密 MCP 路径。
 
 ### 5. 启动
 
@@ -240,9 +234,6 @@ Cloudflare 的 `REPORT_TOKEN` 与 EMQX Action Header 的值必须一致。
 
 示例：`http://192.168.4.1/cmd?k=l`
 
-> ⚠️ `/cmd` 返回的 `{"ok":1}` 只表示路由接受了请求。
-> 代码在执行前就返回 HTTP 200，未知字符也不报错，所以仍需观察屏幕或串口。
-> 终端模式下只有 `q` 会退出，其他字符不会执行表情。
 
 ### MCP 远程调用
 
@@ -344,10 +335,6 @@ Worker 与固件共同支持 13 个远程命令：
 **配色**：`C_ORANGE` / `C_DARKBG` / `C_MUTED` / `C_GREEN` 在初始化时赋值，
 `C_WHITE` 和 `C_BLACK` 直接取自库常量。
 
-> ⚠️ 改完必须重新编译上传，并走一遍[最低验收](#修改后的最低验收)。
-> 新增静态表情还要同时加独立 VIEW、绘制函数、`executeCommand()` 与 `routeRedraw()` 分支，
-> 详见 [AGENTS.md](AGENTS.md) 的修改规则。
-
 ---
 
 ## 安全须知
@@ -356,7 +343,6 @@ Worker 与固件共同支持 13 个远程命令：
 
 - **凭据集中在 `secrets.h`，不进版本库。** Wi-Fi、MQTT 和上报凭据都走
   `SECRET_*` 宏，该文件已被 `.gitignore` 排除，仓库里只留 `secrets.h.example` 模板。
-  ⚠️ 但它确实存在于你本地磁盘上——**打包整个目录发给别人时它会跟着走**，
   用压缩包或网盘分享前先确认。
 - **MQTT TLS 不验证证书。** 当前用 `setInsecure()`，流量加密但不校验服务器身份，
   可被中间人攻击。
@@ -378,14 +364,13 @@ Worker 与固件共同支持 13 个远程命令：
 - 固件保留了一套已停用的 ESP32 直连 Worker HTTPS 上报代码（凭据同样走 `secrets.h`）。
 - 项目没有自动化测试、可复现构建脚本或持续集成；
   编译、上传和端到端验收需要人工完成。
-- `clawd_mochi.3mf` 的说明文字、推荐参数和内嵌切片配置并不完全一致，
-  打印前应以实际切片预览为准。
+
 
 ---
 
 ## 故障排查
 
-**排障顺序**（不要因为单次失败就重建整套云端）：
+**排障顺序**：
 
 ```text
 本地供电/热点 → 家庭 Wi-Fi → MQTT 连接与订阅 → Worker 发布
@@ -409,8 +394,6 @@ Worker 与固件共同支持 13 个远程命令：
 | 确认总是晚一条 | 先比较 Cloudflare 线上 Worker 与磁盘 `worker7.js`，尤其是 D1 读取实现 |
 | 改背景后表情消失 | 当前表情缺独立 VIEW 或 `routeRedraw()` 分支 |
 | MCP 客户端看不到新命令 | 确认 Worker 已 Deploy，并让客户端重新读取工具 schema |
-
----
 
 ## 修改后的最低验收
 
@@ -445,7 +428,3 @@ Worker 与固件共同支持 13 个远程命令：
 | README.md | 安装、使用、排障 |
 | [TECHNICAL.md](TECHNICAL.md) | 需要知道代码具体怎么跑、接口细节 |
 | [AGENTS.md](AGENTS.md) | 让 AI 协作修改本项目之前 |
-
-> **一条贯穿全文的原则：**
-> 旧文档中的部署成功、在线配置和硬件验收只能视为历史记录，不能代替重新测试。
-> 协议、路由和命令等可由源码确认的内容，**以源码为最高事实来源**。
