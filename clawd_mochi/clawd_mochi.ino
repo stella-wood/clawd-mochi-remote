@@ -584,6 +584,30 @@ void termAddChar(char c) {
   }
 }
 
+// 把一整串文字送进终端。
+// 逐字符走 termAddChar，而不是批量填 termLines 再 termFullRedraw 一次——
+// 后者更快，但折行、滚动、光标位置的逻辑全在 termAddChar 里，
+// 绕过它就得把那套逻辑重新实现一遍。一句话几十个字符，逐字符画完全够快。
+// 性能不是这里的瓶颈，正确性才是。
+// typeDelayMs > 0 时有打字机效果；0 = 立刻全部显示。
+void termPrintString(const String& s, uint16_t typeDelayMs = 0) {
+  busy = true;
+  for (uint16_t i = 0; i < s.length(); i++) {
+    termAddChar(s[i]);
+    if (typeDelayMs > 0) delay(typeDelayMs);
+  }
+  busy = false;
+}
+
+// 切进终端模式并清屏。text 命令和 /text 路由共用，避免两处各写一遍。
+void termEnter() {
+  currentView = VIEW_CODE;
+  drawCodeView();      // 注意：它内部会把 termMode 清成 false
+  termClear();
+  termFullRedraw();
+  termMode = true;     // 必须在 drawCodeView() 之后
+}
+
 // ═════════════════════════════════════════════════════════════
 //  ANIMATIONS
 // ═════════════════════════════════════════════════════════════
@@ -1294,6 +1318,16 @@ void routeChar() {
   server.send(200, "application/json", "{\"ok\":1}");
 }
 
+// GET /text?s=hello%20world — 不联外网也能测终端打印
+void routeText() {
+  server.send(200, "application/json", "{\"ok\":1}");   // 先应答，同 routeCmd
+  if (!server.hasArg("s")) return;
+  if (!termMode) termEnter();
+  termPrintString(server.arg("s"));
+  termAddChar('\n');
+  publishState("text", "", true);
+}
+
 void routeSpeed() {
   if (server.hasArg("v")) animSpeed = constrain(server.arg("v").toInt(), 1, 3);
   server.send(200, "application/json", "{\"ok\":1}");
@@ -1614,6 +1648,28 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   Serial.print("收到 MQTT 指令: ");
   Serial.println(msg);
 
+  // text 命令要单独拆。正文里可能带 # 和空格，走不了下面那个
+  // 「找第一个 # 就切」的通用解析 —— 那样 "text#abc#issue #42" 会被
+  // 切成 cmd="text"、nonce="abc#issue #42"，正文整个丢掉。
+  // 格式：text#<nonce>#<正文>，只按前两个 # 切，第二个之后全算正文。
+  if (msg.startsWith("text#")) {
+    int p1 = 5;                          // "text#" 之后
+    int p2 = msg.indexOf('#', p1);
+    if (p2 > 0) {
+      String tnonce = msg.substring(p1, p2);
+      String body   = msg.substring(p2 + 1);
+
+      if (!termMode) termEnter();        // 不在终端模式就先切进去
+      termPrintString(body);
+      termAddChar('\n');                 // 一句话结束换行，下一句从新行开始
+
+      publishState("text", tnonce, true);
+    } else {
+      Serial.println("text 指令格式不对，应为 text#nonce#内容");
+    }
+    return;
+  }
+
   // 兼容两种格式：
   //   "happy"              ← 旧格式 / 手动发布，仍然可用
   //   "happy#a1b2c3"       ← 新格式，# 后面是本次调用的编号
@@ -1743,6 +1799,7 @@ mqtt.setCallback(mqttCallback);
   server.on("/",            HTTP_GET, routeRoot);
   server.on("/cmd",         HTTP_GET, routeCmd);
   server.on("/char",        HTTP_GET, routeChar);
+  server.on("/text",        HTTP_GET, routeText);
   server.on("/speed",       HTTP_GET, routeSpeed);
   server.on("/redraw",      HTTP_GET, routeRedraw);
   server.on("/canvas",      HTTP_GET, routeCanvas);
