@@ -23,7 +23,9 @@ const ROW_KEY   = 'last_state';
 
 const COMMANDS = [
   'blink', 'squish', 'wink', 'sleep', 'angry', 'sad', 'cute',
-  'surprised', 'dead', 'love', 'happy', 'normal', 'canvas'
+  'surprised', 'dead', 'love', 'happy', 'normal', 'canvas',
+  // 只用一次。用过之后从这个数组里删掉。
+  'tide'
 ];
 
 function json(obj, status = 200) {

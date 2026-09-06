@@ -93,6 +93,7 @@ uint16_t C_ORANGE, C_DARKBG, C_MUTED, C_GREEN;
 #define VIEW_EYES_LOVE     10
 #define VIEW_EYES_SURPRISED 11
 #define VIEW_EYES_HAPPY    12
+#define VIEW_TIDE          13
 
 uint8_t  currentView  = VIEW_EYES_NORMAL;
 bool     busy         = false;
@@ -465,6 +466,38 @@ void drawLoveEyes(int16_t oy = 0) {
   drawHeart(rx, cy, 22, C_BLACK);
 }
 
+// ── 只用一次的那一个 ────────────────────────────────────────────
+//  潮水涨上来，退下去，沙上留下一枚环和一颗星。
+//  ⚠️ 这条命令只该被触发一次。触发过之后把 CMD_TABLE 里那一行注释掉。
+//  背景 animBgColor 本身就是橙色（沙），所以海水用 C_DARKBG 画。
+
+#define TIDE_LINE_Y  (DISP_H * 2 / 3)
+#define TIDE_RING_R  34
+#define TIDE_RING_CY (TIDE_LINE_Y - TIDE_RING_R - 6)
+#define TIDE_STAR_Y  (TIDE_LINE_Y - 96)
+#define TIDE_STAR_R  16
+
+void drawRing(int16_t cx, int16_t cy, int16_t r, uint8_t thk, uint16_t col) {
+  for (uint8_t t = 0; t < thk; t++) tft.drawCircle(cx, cy, r - t, col);
+}
+
+// 四角星：四个细长三角从中心指出去
+void drawStar4(int16_t cx, int16_t cy, int16_t r, uint16_t col) {
+  int16_t w = r / 3; if (w < 2) w = 2;
+  tft.fillTriangle(cx - w, cy, cx + w, cy, cx, cy - r, col);
+  tft.fillTriangle(cx - w, cy, cx + w, cy, cx, cy + r, col);
+  tft.fillTriangle(cx, cy - w, cx, cy + w, cx - r, cy, col);
+  tft.fillTriangle(cx, cy - w, cx, cy + w, cx + r, cy, col);
+}
+
+// 定格画面 —— routeRedraw 改背景后要靠它重画
+void drawTideFinal() {
+  tft.fillScreen(animBgColor);
+  tft.fillRect(16, TIDE_LINE_Y, DISP_W - 32, 3, C_MUTED);
+  drawRing(DISP_W / 2, TIDE_RING_CY, TIDE_RING_R, 5, C_BLACK);
+  drawStar4(DISP_W / 2, TIDE_STAR_Y, TIDE_STAR_R, C_WHITE);
+}
+
 void drawCodeView() {
   termMode = false;
   tft.fillScreen(C_DARKBG);
@@ -738,6 +771,60 @@ void animLove() {
   busy = false;
 }
 
+void animTide() {
+  busy = true;
+  const int16_t cx = DISP_W / 2;
+
+  // 一、先是平常的样子，眨一下
+  drawNormalEyes();
+  delay(speedMs(400));
+  drawNormalEyes(0, true);
+  delay(speedMs(130));
+  drawNormalEyes();
+  delay(speedMs(500));
+
+  // 二、涨潮 —— 从底下一层层漫上来，越往上越慢
+  for (int16_t y = DISP_H - 2; y >= -2; y -= 2) {
+    tft.fillRect(0, y, DISP_W, 2, C_DARKBG);
+    if (((DISP_H - y) & 15) == 0) server.handleClient();
+    delay(speedMs(6 + (DISP_H - y) / 25));
+  }
+  delay(speedMs(800));            // 满潮，停一拍
+
+  // 三、退潮 —— 从上往下退回去，露出沙
+  for (int16_t y = 0; y < DISP_H; y += 2) {
+    tft.fillRect(0, y, DISP_W, 2, animBgColor);
+    if ((y & 15) == 0) server.handleClient();
+    delay(speedMs(7));
+  }
+  delay(speedMs(350));
+
+  // 四、沙上那道线
+  tft.fillRect(16, TIDE_LINE_Y, DISP_W - 32, 3, C_MUTED);
+  delay(speedMs(650));
+
+  // 五、环从线上浮起来，由小变大
+  for (int16_t r = 6; r <= TIDE_RING_R; r += 2) {
+    drawRing(cx, TIDE_RING_CY, r, 5, C_BLACK);
+    delay(speedMs(45));
+    if (r < TIDE_RING_R) drawRing(cx, TIDE_RING_CY, r, 5, animBgColor);
+    server.handleClient();
+  }
+  delay(speedMs(550));
+
+  // 六、星亮起来，闪两下
+  for (uint8_t i = 0; i < 2; i++) {
+    drawStar4(cx, TIDE_STAR_Y, TIDE_STAR_R, C_WHITE);
+    delay(speedMs(270));
+    drawStar4(cx, TIDE_STAR_Y, TIDE_STAR_R, animBgColor);
+    delay(speedMs(170));
+  }
+  drawStar4(cx, TIDE_STAR_Y, TIDE_STAR_R, C_WHITE);
+
+  // 七、定格，不再动
+  busy = false;
+}
+
 void animLogoReveal() {
   busy = true;
   tft.fillScreen(animBgColor);
@@ -813,6 +900,8 @@ static const CmdEntry CMD_TABLE[] = {
   { "canvas",     VIEW_DRAW,            actCanvas,         0,   false,    false },
   { "code",       VIEW_CODE,            actCode,           'd', true,     false },
   { "logo",       VIEW_EYES_NORMAL,     animLogoReveal,    'a', false,    false },
+  // ⚠️ 只用一次。用过之后把下面这行注释掉，别再触发。key 留 0，本地网页够不着。
+  { "tide",       VIEW_TIDE,            animTide,          0,   false,    false },
   { "ping",       0,                    actNoop,           0,   false,    true  },
 };
 static const uint8_t CMD_COUNT = sizeof(CMD_TABLE) / sizeof(CMD_TABLE[0]);
@@ -1351,6 +1440,7 @@ void routeRedraw() {
     case VIEW_EYES_LOVE:      drawLoveEyes(0);        break;
     case VIEW_EYES_SURPRISED: drawSurprisedEyes();    break;
     case VIEW_EYES_HAPPY:     drawHappyEyes();        break;
+    case VIEW_TIDE:           drawTideFinal();        break;
     case VIEW_CODE:           drawCodeView();         break;
     case VIEW_DRAW:           tft.fillScreen(drawBgColor); break;
   }
