@@ -477,8 +477,13 @@ void drawLoveEyes(int16_t oy = 0) {
 #define TIDE_STAR_Y  (TIDE_LINE_Y - 96)
 #define TIDE_STAR_R  16
 
+// ⚠️ 别改回「叠 thk 个 drawCircle」的写法。
+//    相邻半径的 Bresenham 圆在斜 45 度附近连不上，环上会留缺口，
+//    半径越小越明显（本地渲染验过）。实心圆挖空才是连续的。
+//    代价是环内被填成 animBgColor —— 这一段的环里本来就没有别的东西。
 void drawRing(int16_t cx, int16_t cy, int16_t r, uint8_t thk, uint16_t col) {
-  for (uint8_t t = 0; t < thk; t++) tft.drawCircle(cx, cy, r - t, col);
+  tft.fillCircle(cx, cy, r, col);
+  if (r > thk) tft.fillCircle(cx, cy, r - thk, animBgColor);
 }
 
 // 四角星：四个细长三角从中心指出去
@@ -493,7 +498,7 @@ void drawStar4(int16_t cx, int16_t cy, int16_t r, uint16_t col) {
 // 定格画面 —— routeRedraw 改背景后要靠它重画
 void drawTideFinal() {
   tft.fillScreen(animBgColor);
-  tft.fillRect(16, TIDE_LINE_Y, DISP_W - 32, 3, C_MUTED);
+  tft.fillRect(16, TIDE_LINE_Y, DISP_W - 32, 3, C_DARKBG);  // 湿沙：海退到这儿
   drawRing(DISP_W / 2, TIDE_RING_CY, TIDE_RING_R, 5, C_BLACK);
   drawStar4(DISP_W / 2, TIDE_STAR_Y, TIDE_STAR_R, C_WHITE);
 }
@@ -800,7 +805,7 @@ void animTide() {
   delay(speedMs(350));
 
   // 四、沙上那道线
-  tft.fillRect(16, TIDE_LINE_Y, DISP_W - 32, 3, C_MUTED);
+  tft.fillRect(16, TIDE_LINE_Y, DISP_W - 32, 3, C_DARKBG);  // 湿沙：海退到这儿
   delay(speedMs(650));
 
   // 五、环从线上浮起来，由小变大
