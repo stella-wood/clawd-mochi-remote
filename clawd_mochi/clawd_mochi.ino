@@ -809,10 +809,13 @@ void animTide() {
   delay(speedMs(650));
 
   // 五、环从线上浮起来，由小变大
+  // ⚠️ 不许在两帧之间擦一次。擦掉再画中间那个空档在屏幕上就是一下闪。
+  //    也不需要擦：drawRing 是「实心圆 + 背景色挖空」，
+  //    新的一帧 fillCircle(r) 盖住旧环的外侧，fillCircle(r-thk, bg) 盖掉内侧，
+  //    旧环没有一个像素能活下来。直接连着画就是干净的生长。
   for (int16_t r = 6; r <= TIDE_RING_R; r += 2) {
     drawRing(cx, TIDE_RING_CY, r, 5, C_BLACK);
     delay(speedMs(45));
-    if (r < TIDE_RING_R) drawRing(cx, TIDE_RING_CY, r, 5, animBgColor);
     server.handleClient();
   }
   delay(speedMs(550));
