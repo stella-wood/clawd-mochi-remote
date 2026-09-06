@@ -476,6 +476,12 @@ void drawLoveEyes(int16_t oy = 0) {
 #define TIDE_RING_CY (TIDE_LINE_Y - TIDE_RING_R - 6)
 #define TIDE_STAR_Y  (TIDE_LINE_Y - 96)
 #define TIDE_STAR_R  16
+// ⚠️ 下面三个数是 2026-09-06 拿真机照片调出来的，别按渲染图的观感往回改小。
+//    真屏幕会把暗色吃掉一层：渲染图上浓黑的 3px 线，拍出来淡得像瑕疵；
+//    5px 的环在橙底上细得像铅笔勾的圈，全部注意力被星星抢走。
+#define TIDE_RING_THK 10
+#define TIDE_LINE_H   6
+#define TIDE_LINE_PAD 8
 
 // ⚠️ 别改回「叠 thk 个 drawCircle」的写法。
 //    相邻半径的 Bresenham 圆在斜 45 度附近连不上，环上会留缺口，
@@ -498,8 +504,9 @@ void drawStar4(int16_t cx, int16_t cy, int16_t r, uint16_t col) {
 // 定格画面 —— routeRedraw 改背景后要靠它重画
 void drawTideFinal() {
   tft.fillScreen(animBgColor);
-  tft.fillRect(16, TIDE_LINE_Y, DISP_W - 32, 3, C_DARKBG);  // 湿沙：海退到这儿
-  drawRing(DISP_W / 2, TIDE_RING_CY, TIDE_RING_R, 5, C_BLACK);
+  tft.fillRect(TIDE_LINE_PAD, TIDE_LINE_Y,
+               DISP_W - TIDE_LINE_PAD * 2, TIDE_LINE_H, C_BLACK);  // 湿沙：海退到这儿
+  drawRing(DISP_W / 2, TIDE_RING_CY, TIDE_RING_R, TIDE_RING_THK, C_BLACK);
   drawStar4(DISP_W / 2, TIDE_STAR_Y, TIDE_STAR_R, C_WHITE);
 }
 
@@ -805,7 +812,8 @@ void animTide() {
   delay(speedMs(350));
 
   // 四、沙上那道线
-  tft.fillRect(16, TIDE_LINE_Y, DISP_W - 32, 3, C_DARKBG);  // 湿沙：海退到这儿
+  tft.fillRect(TIDE_LINE_PAD, TIDE_LINE_Y,
+               DISP_W - TIDE_LINE_PAD * 2, TIDE_LINE_H, C_BLACK);  // 湿沙：海退到这儿
   delay(speedMs(650));
 
   // 五、环从线上浮起来，由小变大
@@ -814,7 +822,7 @@ void animTide() {
   //    新的一帧 fillCircle(r) 盖住旧环的外侧，fillCircle(r-thk, bg) 盖掉内侧，
   //    旧环没有一个像素能活下来。直接连着画就是干净的生长。
   for (int16_t r = 6; r <= TIDE_RING_R; r += 2) {
-    drawRing(cx, TIDE_RING_CY, r, 5, C_BLACK);
+    drawRing(cx, TIDE_RING_CY, r, TIDE_RING_THK, C_BLACK);
     delay(speedMs(45));
     server.handleClient();
   }
